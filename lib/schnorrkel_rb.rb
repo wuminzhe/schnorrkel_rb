@@ -13,31 +13,25 @@ class Str < FFI::AutoPointer
   end
 end
 
-def to_bytes(str)
-  data = str.start_with?('0x') ? str[2..] : str
-  raise 'Not valid hex string' if data =~ /[^\da-f]+/i
-
-  data = "0#{data}" if data.length.odd?
-  data.scan(/../).map(&:hex)
-end
-
 module SchnorrkelRb
   class Error < StandardError; end
 
   extend FFI::Library
   ffi_lib "#{__dir__}/../target/release/libschnorrkel." + FFI::Platform::LIBSUFFIX
-  attach_function :sign, %i[pointer int pointer int], Str
-  attach_function :free, :my_free, [Str], :void
+  attach_function :verify, :verify, %i[string string string], :bool
+  attach_function :sign_by_seed, :sign_by_seed, %i[string string], Str
+  attach_function :free, :free_s, [Str], :void
 
-  def self.sr25519_sign(message, seed)
-    message_data = to_bytes(message)
-    m = FFI::MemoryPointer.new(:int8, message_data.size)
-    m.write_array_of_int8 message_data
+  def self.sr25519_sign(seed, message)
+    message = message[2..] if message.start_with?('0x')
+    seed = seed[2..] if seed.start_with?('0x')
+    self.sign_by_seed(message, seed).to_s
+  end
 
-    seed_data = to_bytes(seed)
-    s = FFI::MemoryPointer.new(:int8, seed_data.size)
-    s.write_array_of_int8 seed_data
-
-    self.sign(m, m.size, s, s.size).to_s
+  def self.sr25519_verify(signature, message, pubkey)
+    pubkey = pubkey[2..] if pubkey.start_with?('0x')
+    message = message[2..] if message.start_with?('0x')
+    signature = signature[2..] if signature.start_with?('0x')
+    self.verify(signature, message, pubkey)
   end
 end

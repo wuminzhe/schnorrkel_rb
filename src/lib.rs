@@ -1,27 +1,35 @@
-// mod wrapper;
+// modified from: https://github.com/paritytech/schnorrkel-js/blob/master/src/lib.rs
 
 extern crate core;
 
 mod wrapper;
+use wrapper::*;
 
 use libc::c_char;
-use std::ffi::CString;
-use std::slice;
-use hex_literal::hex;
-
+use std::ffi::{CStr, CString};
 use schnorrkel::{KEYPAIR_LENGTH, SECRET_KEY_LENGTH};
 
-use schnorrkel::{ExpansionMode, Keypair, MiniSecretKey, PublicKey, SecretKey, Signature, SIGNATURE_LENGTH, signing_context};
-fn to_u8_slice(pointer: *const u8, len: usize) -> Vec<u8> {
-    let data_slice = unsafe {
-        assert!(!pointer.is_null());
-        slice::from_raw_parts(pointer, len)
+// hex str pointer -> string
+fn hex_pointer_to_string(s: *const c_char) -> String {
+    let c_str = unsafe {
+        assert!(!s.is_null());
+        CStr::from_ptr(s)
     };
-    data_slice.to_vec()
+    c_str.to_str().unwrap().to_owned()
+}
+
+fn hex_pointer_to_vecu8(s: *const c_char) -> Vec<u8> {
+    hex::decode(hex_pointer_to_string(s)).unwrap()
+}
+
+fn u8a_to_hex_pointer(u8a: &[u8]) -> *mut c_char {
+    let s = hex::encode(u8a.to_vec());
+    let c_str = CString::new(s).unwrap();
+    c_str.into_raw()
 }
 
 #[no_mangle]
-pub extern "C" fn my_free(s: *mut c_char) {
+pub extern "C" fn free_s(s: *mut c_char) {
     unsafe {
         if s.is_null() {
             return;
@@ -30,47 +38,110 @@ pub extern "C" fn my_free(s: *mut c_char) {
     };
 }
 
+/// Perform a derivation on a secret
+///
+/// * secret: hex pointer of 64 bytes
+/// * cc: hex pointer of 32 bytes
+///
+/// returned vector the derived keypair as hex pointer of 96 bytes
 #[no_mangle]
-pub extern "C" fn sign(
-    message_p: *const u8, message_len: usize,
-    seed_p: *const u8, seed_len: usize,
-) ->  *mut c_char {
+pub extern "C" fn derive_keypair_hard(pair_p: *const c_char, cc_p: *const c_char) -> *mut c_char {
+    let pair = hex_pointer_to_vecu8(pair_p);
+    let cc = hex_pointer_to_vecu8(cc_p);
+    let d = __derive_keypair_hard(pair.as_slice(), cc.as_slice());
+    u8a_to_hex_pointer(&d)
+}
 
-    // // let seed = to_u8_slice(seed_p, seed_len);
-    // let seed = [200, 250, 3, 83, 47, 178, 46, 225, 247, 246, 144, 139, 156, 2, 180, 231, 36, 131, 240, 219, 214, 110, 76, 212, 86, 184, 243, 76, 98, 48, 184, 73];
-    // // let keypair = wrapper::__keypair_from_seed(seed.as_slice());
-    // let mini_key: MiniSecretKey = MiniSecretKey::from_bytes(&seed)
-    //     .expect("32 bytes can always build a key; qed");
-    // let s = mini_key.expand(ExpansionMode::Ed25519);
-    // let private = s.to_bytes();
-    // let public = s.to_public().to_bytes();
-    //
-    // let message = [104, 101, 108, 108, 111, 44, 32, 119, 111, 114, 108, 100];
-    // let mut signature = wrapper::__sign(&public, &private, &message);
-    // signature.as_mut_ptr()
+/// Perform a derivation on a secret
+///
+/// * secret: UIntArray with 64 bytes
+/// * cc: UIntArray with 32 bytes
+///
+/// returned vector the derived keypair as a array of 96 bytes
+#[no_mangle]
+pub fn derive_keypair_soft(pair_p: *const c_char, cc_p: *const c_char) -> *mut c_char {
+    let pair = hex_pointer_to_vecu8(pair_p);
+    let cc = hex_pointer_to_vecu8(cc_p);
+    let d = __derive_keypair_soft(pair.as_slice(), cc.as_slice());
+    u8a_to_hex_pointer(&d)
+}
 
+/// Sign a message
+///
+/// The combination of both public and private key must be provided.
+/// This is effectively equivalent to a keypair.
+///
+/// * public: UIntArray with 32 element
+/// * private: UIntArray with 64 element
+/// * message: Arbitrary length hex pointer
+///
+/// * returned vector is the signature consisting of 64 bytes.
+/// Sign a message
+///
+/// The combination of both public and private key must be provided.
+/// This is effectively equivalent to a keypair.
+///
+/// * public: UIntArray with 32 element
+/// * private: UIntArray with 64 element
+/// * message: Arbitrary length UIntArray
+///
+/// * returned vector is the signature consisting of 64 bytes.
+#[no_mangle]
+pub fn sign(public_p: *const c_char, private_p: *const c_char, message_p: *const c_char) -> *mut c_char {
+    let public = hex_pointer_to_vecu8(public_p);
+    let private = hex_pointer_to_vecu8(private_p);
+    let message = hex_pointer_to_vecu8(message_p);
+    let signature = __sign(public.as_slice(), private.as_slice(), message.as_slice());
+    u8a_to_hex_pointer(&signature)
+}
 
-    // let context = signing_context(b"substrate");
-    // let message = to_u8_slice(message_p, message_len);
-    // let signature: Signature = keypair.sign(context.bytes(message.as_slice()));
-    // let sig_bytes = signature.to_bytes();
-    // let ptr = signature.to_bytes().as_mut_ptr();
-    // std::mem::forget(sig_bytes);
-    // ptr
+/// Verify a message and its corresponding against a public key;
+///
+/// * signature: UIntArray with 64 element
+/// * message: Arbitrary length UIntArray
+/// * pubkey: UIntArray with 32 element
+#[no_mangle]
+pub fn verify(signature_p: *const c_char, message_p: *const c_char, pubkey_p: *const c_char) -> bool {
+    let signature = hex_pointer_to_vecu8(signature_p);
+    let pubkey = hex_pointer_to_vecu8(pubkey_p);
+    let message = hex_pointer_to_vecu8(message_p);
+    __verify(signature.as_slice(), message.as_slice(), pubkey.as_slice())
+}
 
-    let seed = hex!("c8fa03532fb22ee1f7f6908b9c02b4e72483f0dbd66e4cd456b8f34c6230b849");
-    let keypair = wrapper::sr25519_keypair_from_seed(&seed);
+/// Generate a secret key (aka. private key) from a seed phrase.
+///
+/// * seed: UIntArray with 32 element
+///
+/// returned vector is the private key consisting of 64 bytes.
+#[no_mangle]
+pub fn secret_from_seed(seed_p: *const c_char) -> *mut c_char {
+    let seed = hex_pointer_to_vecu8(seed_p);
+    let secret = __secret_from_seed(seed.as_slice());
+    u8a_to_hex_pointer(&secret)
+}
+
+/// Generate a key pair. .
+///
+/// * seed: UIntArray with 32 element
+///
+/// returned vector is the concatenation of first the private key (64 bytes)
+/// followed by the public key (32) bytes.
+#[no_mangle]
+pub fn keypair_from_seed(seed_p: *const c_char) -> *mut c_char {
+    let seed = hex_pointer_to_vecu8(seed_p);
+    let keypair = __keypair_from_seed(seed.as_slice());
+    u8a_to_hex_pointer(&keypair)
+}
+
+#[no_mangle]
+pub extern "C" fn sign_by_seed(message_p: *const c_char, seed_p: *const c_char) -> *mut c_char {
+    let seed = hex_pointer_to_vecu8(seed_p);
+    let keypair = wrapper::__keypair_from_seed(seed.as_slice());
     let private = &keypair[0..SECRET_KEY_LENGTH];
     let public = &keypair[SECRET_KEY_LENGTH..KEYPAIR_LENGTH];
 
-    let message = hex!("68656c6c6f2c20776f726c64");
-    let mut signature = wrapper::__sign(&public, &private, &message);
-    println!("{:?}", signature);
-    let s = hex::encode(signature.to_vec());
-    let c_str = CString::new(s).unwrap();
-    c_str.into_raw()
-
-    // let ptr = signature.as_mut_ptr();
-    // std::mem::forget(signature);
-    // ptr
+    let message = hex_pointer_to_vecu8(message_p);
+    let signature = wrapper::__sign(&public, &private, &message);
+    // println!("{:?}", signature);
+    u8a_to_hex_pointer(&signature)
 }

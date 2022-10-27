@@ -10,7 +10,6 @@ edition = "2018"
 schnorrkel = "0.10.1"
 hex = "0.4.3"
 libc = "0.2.90"
-hex-literal = "0.3.1"
 
 [lib]
 crate-type=["dylib"]
