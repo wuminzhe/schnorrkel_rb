@@ -9,7 +9,7 @@ class Str < FFI::AutoPointer
   end
 
   def to_s
-    @str ||= self.read_string.force_encoding('UTF-8')
+    @str ||= read_string.force_encoding("UTF-8")
   end
 end
 
@@ -23,15 +23,15 @@ module SchnorrkelRb
   attach_function :free, :free_s, [Str], :void
 
   def self.sr25519_sign(seed, message)
-    message = message[2..] if message.start_with?('0x')
-    seed = seed[2..] if seed.start_with?('0x')
-    self.sign_by_seed(message, seed).to_s
+    message = message[2..] if message.start_with?("0x")
+    seed = seed[2..] if seed.start_with?("0x")
+    sign_by_seed(message, seed).to_s
   end
 
   def self.sr25519_verify(signature, message, pubkey)
-    pubkey = pubkey[2..] if pubkey.start_with?('0x')
-    message = message[2..] if message.start_with?('0x')
-    signature = signature[2..] if signature.start_with?('0x')
-    self.verify(signature, message, pubkey)
+    pubkey = pubkey[2..] if pubkey.start_with?("0x")
+    message = message[2..] if message.start_with?("0x")
+    signature = signature[2..] if signature.start_with?("0x")
+    verify(signature, message, pubkey)
   end
 end

@@ -30,7 +30,7 @@ Gem::Specification.new do |spec|
   spec.executables = spec.files.grep(%r{\Aexe/}) { |f| File.basename(f) }
   spec.require_paths = ["lib"]
 
-  spec.extensions << 'ext/Rakefile'
-  spec.add_runtime_dependency 'thermite', '~> 0'
+  spec.extensions << "ext/Rakefile"
+  spec.add_runtime_dependency "thermite", "~> 0"
   spec.add_dependency "ffi", "~> 1.0"
 end

@@ -1,12 +1,12 @@
 # frozen_string_literal: true
 
 require "bundler/gem_tasks"
-require "rspec/core/rake_task"
+require "thermite/tasks"
 
-RSpec::Core::RakeTask.new(:spec)
+Thermite::Tasks.new
 
-require "rubocop/rake_task"
+task default: %w[thermite:build]
 
-RuboCop::RakeTask.new
-
-task default: %i[spec rubocop]
+desc "Run Rust & Ruby testsuites"
+task test: ["thermite:build", "thermite:test"] do
+end
